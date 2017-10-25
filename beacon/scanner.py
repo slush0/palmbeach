@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(prog=application_name, description=__doc__)
 parser.add_argument('room', type=str, metavar='ROOM')
 #parser.add_argument('-m', '--mode', default='range', choices=['range', 'gateway'])
 parser.add_argument('-s', '--sensitivity', type=int, default=100)
-parser.add_argument('-tin', '--timeout-in', dest='timeout_in', type=int, default=3)
+parser.add_argument('-tin', '--timeout-in', dest='timeout_in', type=int, default=10)
 parser.add_argument('-tout', '--timeout-out', dest='timeout_out', type=int, default=10)
 parser.add_argument('-i', '--iface', default='hci0')
 #parser.add_argument('-i2', '--iface2', default='hci1')
@@ -69,10 +69,10 @@ def report_change(b):
 
 class Beacon(object):
     def __init__(self, uuid):
-        self.uuid = uuid.decode()
+        self.uuid = uuid
         self.counter = 0
         self.active = False
-        self.last_access = int(time.time())
+        self.last_access = 0
 
     def __repr__(self):
         return json.dumps(self.__dict__)
@@ -87,9 +87,14 @@ class BeaconRegistry(object):
         self.last_ping = 0
 
     def register(self, uuid, rssi):
-        print("IBEACON %s %d %.02f" % (uuid, rssi, rssi_to_distance(rssi)))
-
         b = self.registry.setdefault(uuid, Beacon(uuid))
+
+        if b.last_access > int(time.time() - 1):
+            # Ignore packets over >1Hz
+            return
+
+        print("beat %s %d %.02f" % (uuid, rssi, rssi_to_distance(rssi)))
+
         b.last_access = int(time.time())
         b.counter += 1
 
@@ -152,7 +157,7 @@ class Scanner(object):
         if len(data) == data[2] + 3 and data[len(data)-24] == 0x02 and data[len(data)-24+1] == 0x15:
 
             msg = data[len(data)-24:]
-            uuid = binascii.hexlify(msg[2:2+16])
+            uuid = binascii.hexlify(msg[2:2+16]).decode()
             rssi = 256 - int(binascii.hexlify(msg[23:24]), 16)
 
             if rssi <= self.sensitivity:
