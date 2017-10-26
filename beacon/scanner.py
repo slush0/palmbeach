@@ -17,11 +17,13 @@ parser.add_argument('room', type=str, metavar='ROOM')
 #parser.add_argument('-m', '--mode', default='range', choices=['range', 'gateway'])
 parser.add_argument('-s', '--sensitivity', type=int, default=100)
 parser.add_argument('-tin', '--timeout-in', dest='timeout_in', type=int, default=10)
-parser.add_argument('-tout', '--timeout-out', dest='timeout_out', type=int, default=10)
+parser.add_argument('-tout', '--timeout-out', dest='timeout_out', type=int, default=60)
 parser.add_argument('-i', '--iface', default='hci0')
 #parser.add_argument('-i2', '--iface2', default='hci1')
 parser.add_argument('-c', '--callback', metavar='CALLBACK_URL',
                     help='Callback URL for reporting appearance/disappearance of the device')
+parser.add_argument("-b", "--beats", action='store_true',
+                    help='Print beacon beats.')
 parser.add_argument("-v", "--verbose", action='store_true',
                     help='Print lots of debug output.')
 
@@ -73,10 +75,16 @@ class Beacon(object):
         self.counter = 0
         self.active = False
         self.last_access = 0
+        self.rssi = []
 
     def __repr__(self):
         return json.dumps(self.__dict__)
         #"UUID %s: %s %d %d" % (self.uuid, self.active, self.counter, self.last_access)
+
+    def add_rssi(self, current_rssi):
+        self.rssi.append(current_rssi)
+        if len(self.rssi) > 10:
+            self.rssi = self.rssi[1:]
 
 class BeaconRegistry(object):
     def __init__(self, timeout_in, timeout_out):
@@ -93,10 +101,13 @@ class BeaconRegistry(object):
             # Ignore packets over >1Hz
             return
 
-        print("beat %s %d %.02f" % (uuid, rssi, rssi_to_distance(rssi)))
+        if args.beats:
+            print("beat %s %d %.02f" % (uuid, rssi, rssi_to_distance(rssi)))
+            sys.stdout.flush()
 
         b.last_access = int(time.time())
         b.counter += 1
+        b.add_rssi(rssi)
 
         if not b.active and b.counter >= self.timeout_in:
             b.active = True
@@ -117,6 +128,7 @@ class BeaconRegistry(object):
                 if b.active:
                     b.active = False
                     self.on_disappear(b)
+                    b.rssi = []
 
         if self.last_ping <= time.time() - 60:
             self.last_ping = int(time.time())
@@ -124,10 +136,12 @@ class BeaconRegistry(object):
 
     def on_appear(self, b):
         print("%s is now active" % b)
+        sys.stdout.flush()
         report_change(b)
 
     def on_disappear(self, b):
         print("%s is now away" % b)
+        sys.stdout.flush()
         report_change(b)
       
 class Scanner(object):
@@ -146,6 +160,7 @@ class Scanner(object):
     def decode_packet(self, packet):
         if args.verbose:
             print(packet)
+            sys.stdout.flush()
 
         data = bytearray.fromhex(packet)
         
@@ -157,13 +172,25 @@ class Scanner(object):
         if len(data) == data[2] + 3 and data[len(data)-24] == 0x02 and data[len(data)-24+1] == 0x15:
 
             msg = data[len(data)-24:]
-            uuid = binascii.hexlify(msg[2:2+16]).decode()
+            uuid = 'ibeacon-%s' % binascii.hexlify(msg[2:2+16]).decode()
             rssi = 256 - int(binascii.hexlify(msg[23:24]), 16)
 
             if rssi <= self.sensitivity:
                 self.registry.register(uuid, rssi)
             elif args.verbose:
                 print("%s is too far: %d" % (uuid, rssi))
+
+        # trackr
+        elif len(data) == data[2] + 3 and data[len(data)-22] == 0x03 and data[len(data)-22+1] == 0x19:
+            msg = data[len(data)-22:]
+            uuid = 'trackr-%s' % binascii.hexlify(msg[2:2+16]).decode()
+            rssi = 256 - int(binascii.hexlify(msg[21:22]), 16)
+
+            if rssi <= self.sensitivity:
+                self.registry.register(uuid, rssi)
+            elif args.verbose:
+                print("%s is too far: %d" % (uuid, rssi))
+
 
         else:
             # print("Unknown beacon type")
@@ -179,11 +206,17 @@ class Scanner(object):
                     line = self.dump.stdout.readline().decode()
                     if line.startswith("> "):
                         if packet:
-                            self.decode_packet(packet)
+                            try:
+                                self.decode_packet(packet)
+                            except Exception as e:
+                                print("Decoding packet failed: %s" % str(e))
                         packet = line[2:].strip()
                     elif line.startswith("< "):
                         if packet:
-                            self.decode_packet(packet)
+                            try:
+                                self.decode_packet(packet)
+                            except Exception as e:
+                                print("Decoding packet failed: %s" % str(e))
                         packet = None
                     else:
                         if packet:
@@ -200,6 +233,7 @@ def main():
     print("Timeout OUT: %d" % args.timeout_out)
     print("Room name: %s" % args.room)
     print("Callback URL: %s" % args.callback)
+    sys.stdout.flush()
 
     scanner = Scanner(args.iface, args.sensitivity, args.timeout_in, args.timeout_out)
     scanner.scan() 

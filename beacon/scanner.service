@@ -1,0 +1,14 @@
+[Unit]
+Description=Beacon Scanner
+After=multi-user.target
+
+[Service]
+Type=idle
+EnvironmentFile=/etc/scanner.conf
+ExecStart=/root/palmbeach/beacon/scanner.py $PARAMETERS
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
