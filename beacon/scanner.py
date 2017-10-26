@@ -74,12 +74,14 @@ class Beacon(object):
         self.uuid = uuid
         self.counter = 0
         self.active = False
-        self.last_access = 0
+        self.first_seen = 0
+        self.last_seen = 0
+        self.seen_for = 0
+
         self.rssi = []
 
     def __repr__(self):
         return json.dumps(self.__dict__)
-        #"UUID %s: %s %d %d" % (self.uuid, self.active, self.counter, self.last_access)
 
     def add_rssi(self, current_rssi):
         self.rssi.append(current_rssi)
@@ -95,9 +97,10 @@ class BeaconRegistry(object):
         self.last_ping = 0
 
     def register(self, uuid, rssi):
+        t = int(time.time())
         b = self.registry.setdefault(uuid, Beacon(uuid))
 
-        if b.last_access > int(time.time() - 1):
+        if b.last_seen > t - 1:
             # Ignore packets over >1Hz
             return
 
@@ -105,29 +108,34 @@ class BeaconRegistry(object):
             print("beat %s %d %.02f" % (uuid, rssi, rssi_to_distance(rssi)))
             sys.stdout.flush()
 
-        b.last_access = int(time.time())
+        b.last_seen = t
         b.counter += 1
         b.add_rssi(rssi)
 
         if not b.active and b.counter >= self.timeout_in:
             b.active = True
+            b.first_seen = t
             self.on_appear(b)
 
         self.registry[uuid] = b
 
     def cleanup(self):
         # Called in loop even if no beacon is detected
-        if self.last_cleanup > time.time() - 1:
+        t = int(time.time())
+        if self.last_cleanup > t - 1:
             return
         
-        self.last_cleanup = time.time()
+        self.last_cleanup = t
 
         for uuid, b in self.registry.items():
-            if b.counter > 0 and int(time.time()) - self.timeout_out > b.last_access:
+            if b.counter > 0 and t - self.timeout_out > b.last_seen:
                 b.counter = 0
                 if b.active:
                     b.active = False
+                    b.seen_for = b.last_seen - b.first_seen
                     self.on_disappear(b)
+                    b.first_seen = 0
+                    b.seen_for = 0
                     b.rssi = []
 
         if self.last_ping <= time.time() - 60:
