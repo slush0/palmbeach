@@ -8,7 +8,7 @@ import json
 import argparse
 import requests
 
-application_name = 'palmbeach-beacon'
+application_name = 'palmbeach-scanner'
 CALLBACK_TIMEOUT = 1
 DEVNULL = subprocess.DEVNULL
 

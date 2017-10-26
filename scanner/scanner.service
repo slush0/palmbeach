@@ -5,7 +5,7 @@ After=multi-user.target
 [Service]
 Type=idle
 EnvironmentFile=/etc/scanner.conf
-ExecStart=/root/palmbeach/beacon/scanner.py $PARAMETERS
+ExecStart=/root/palmbeach/scanner/scanner.py $PARAMS
 Restart=always
 RestartSec=5
 TimeoutStopSec=60
