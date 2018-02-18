@@ -7,6 +7,7 @@ import time
 import json
 import argparse
 import requests
+import random
 
 application_name = 'palmbeach-scanner'
 CALLBACK_TIMEOUT = 1
@@ -234,6 +235,9 @@ class Scanner(object):
             print(str(e))
         
 def main():
+    if args.iface == 'test' and args.callback is None:
+        args.callback = 'http://localhost:8000/presence/scanner/'
+
     #print("Mode: %s" % args.mode)
     print("Interface: %s" % args.iface)
     print("Sensitivity: %d" % args.sensitivity)
@@ -243,8 +247,35 @@ def main():
     print("Callback URL: %s" % args.callback)
     sys.stdout.flush()
 
-    scanner = Scanner(args.iface, args.sensitivity, args.timeout_in, args.timeout_out)
-    scanner.scan() 
+    if args.iface == 'test':
+        b1 = Beacon('b3ac09-01')
+        b1.first_seen = int(time.time())
+        b1.active = True
+
+        b2 = Beacon('b3ac09-02')
+        b2.first_seen = int(time.time() - 120)
+        b2.last_seen = int(time.time() - 10)
+        b2.seen_for = 110
+        b2.counter = 20
+        b2.active = False
+        for x in range(10):
+            b2.add_rssi(random.randint(20, 40))
+
+        while True:
+            print("Sending test reports")
+            report_ping()
+
+            b1.counter += 1
+            b1.last_seen = int(time.time())
+            b1.add_rssi(random.randint(60, 80))
+            report_change(b1)
+
+            report_change(b2)
+            time.sleep(2)
+
+    else:
+        scanner = Scanner(args.iface, args.sensitivity, args.timeout_in, args.timeout_out)
+        scanner.scan()
 
 if __name__ == "__main__":
     main()
