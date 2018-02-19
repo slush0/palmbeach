@@ -7,6 +7,12 @@ class PersonAdmin(admin.ModelAdmin):
 
 class ActivityAdmin(admin.ModelAdmin):
     search_fields = ('person__name', 'person__uuid')
+    list_filter = ('first_seen', 'last_seen')
+    list_display = ('person_name', 'first_seen', 'last_seen', 'seen_for')
+    ordering = ('-first_seen',)
+
+    def person_name(self, obj):
+        return obj.person.name
 
 admin.site.register(Person, PersonAdmin)
 admin.site.register(Activity, ActivityAdmin)
